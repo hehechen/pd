@@ -450,6 +450,13 @@ func (bc *BasicCluster) ScanRange(startKey, endKey []byte, limit int) []*RegionI
 	return bc.Regions.ScanRange(startKey, endKey, limit)
 }
 
+// ScanRange scans regions intersecting [start key, end key), return the most approx lag
+func (bc *BasicCluster) ScanRangeForMaxApproxLag(startKey, endKey []byte) uint64 {
+	bc.RLock()
+	defer bc.RUnlock()
+	return bc.Regions.ScanRangeForMaxApproxLag(startKey, endKey)
+}
+
 // GetOverlaps returns the regions which are overlapped with the specified region range.
 func (bc *BasicCluster) GetOverlaps(region *RegionInfo) []*RegionInfo {
 	bc.RLock()

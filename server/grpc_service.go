@@ -941,6 +941,7 @@ func (s *GrpcServer) RegionHeartbeat(stream pdpb.PD_RegionHeartbeatServer) error
 			s.hbStreams.SendErr(pdpb.ErrorType_UNKNOWN, msg, request.GetLeader())
 			continue
 		}
+		rc.SetMaxApproxLag(region)
 
 		// If the region peer count is 0, then we should not handle this.
 		if len(region.GetPeers()) == 0 {

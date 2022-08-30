@@ -96,6 +96,11 @@ type Server interface {
 	ReplicateFileToMember(ctx context.Context, member *pdpb.Member, name string, data []byte) error
 }
 
+type MaxRegionApproxLag struct {
+	RegionID     uint64 `json:"regionID"`
+	MaxApproxLag uint64 `json:"maxApproxLag"`
+}
+
 // RaftCluster is used for cluster config management.
 // Raft cluster key format:
 // cluster 1 -> /1/raft, value is metapb.Cluster
@@ -119,6 +124,7 @@ type RaftCluster struct {
 	storeConfigManager *config.StoreConfigManager
 	storage            storage.Storage
 	minResolvedTS      uint64
+	maxRegionApproxLag MaxRegionApproxLag
 	// Keep the previous store limit settings when removing a store.
 	prevStoreLimit map[uint64]map[storelimit.Type]float64
 
@@ -923,6 +929,11 @@ func (c *RaftCluster) GetPrevRegionByKey(regionKey []byte) *core.RegionInfo {
 // total number greater than limit.
 func (c *RaftCluster) ScanRegions(startKey, endKey []byte, limit int) []*core.RegionInfo {
 	return c.core.ScanRange(startKey, endKey, limit)
+}
+
+// ScanRegions scans region with start key, until the region contains endKey,
+func (c *RaftCluster) ScanRegionsForApproxLag(startKey, endKey []byte) uint64 {
+	return c.core.ScanRangeForMaxApproxLag(startKey, endKey)
 }
 
 // GetRegion searches for a region by ID.
@@ -2123,6 +2134,23 @@ func (c *RaftCluster) SetMinResolvedTS(storeID, minResolvedTS uint64) error {
 	)
 
 	return c.putStoreLocked(newStore)
+}
+
+func (c *RaftCluster) SetMaxApproxLag(region *core.RegionInfo) {
+	c.Lock()
+	defer c.Unlock()
+	if c.maxRegionApproxLag.RegionID == region.GetID() {
+		c.maxRegionApproxLag.MaxApproxLag = region.GetMaxApproxLag()
+	} else if region.GetMaxApproxLag() > c.maxRegionApproxLag.MaxApproxLag {
+		c.maxRegionApproxLag.RegionID = region.GetID()
+		c.maxRegionApproxLag.MaxApproxLag = region.GetMaxApproxLag()
+	}
+}
+
+func (c *RaftCluster) GetMaxApproxLag() MaxRegionApproxLag {
+	c.Lock()
+	defer c.Unlock()
+	return c.maxRegionApproxLag
 }
 
 func (c *RaftCluster) checkAndUpdateMinResolvedTS() (uint64, bool) {

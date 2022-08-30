@@ -115,6 +115,7 @@ type RegionInfo struct {
 	ApproximateSize int64         `json:"approximate_size"`
 	ApproximateKeys int64         `json:"approximate_keys"`
 	Buckets         []string      `json:"buckets,omitempty"`
+	MaxApproxLag    uint64        `json:"max_approx_lag"`
 
 	ReplicationStatus *ReplicationStatus `json:"replication_status,omitempty"`
 }
@@ -161,6 +162,7 @@ func InitRegion(r *core.RegionInfo, s *RegionInfo) *RegionInfo {
 	s.ReadKeys = r.GetKeysRead()
 	s.ApproximateSize = r.GetApproximateSize()
 	s.ApproximateKeys = r.GetApproximateKeys()
+	s.MaxApproxLag = r.GetMaxApproxLag()
 	s.ReplicationStatus = fromPBReplicationStatus(r.GetReplicationStatus())
 
 	keys := r.GetBuckets().GetKeys()
@@ -458,6 +460,27 @@ func (h *regionsHandler) GetDownPeerRegions(w http.ResponseWriter, r *http.Reque
 	}
 	regionsInfo := convertToAPIRegions(regions)
 	h.rd.JSON(w, http.StatusOK, regionsInfo)
+}
+
+// @Tags     region
+// @Summary  get max approx lag from regions in [startKey, endKey).
+// @Param    key     query  string   true   "Region range start key"
+// @Param    endkey  query  string   true   "Region range end key"
+// @Produce  json
+// @Success  200  {object}  RegionsInfo
+// @Failure  400  {string}  string  "The input is invalid."
+// @Router   /regions/key [get]
+func (h *regionsHandler) GetMaxApproxLag(w http.ResponseWriter, r *http.Request) {
+	rc := getCluster(r)
+	startKey := r.URL.Query().Get("key")
+	endKey := r.URL.Query().Get("end_key")
+	if len(endKey) == 0 {
+		h.rd.JSON(w, http.StatusBadRequest, fmt.Errorf("missing end_key"))
+		return
+	}
+
+	maxApproxLag := rc.ScanRegionsForApproxLag([]byte(startKey), []byte(endKey))
+	h.rd.JSON(w, http.StatusOK, maxApproxLag)
 }
 
 // @Tags     region

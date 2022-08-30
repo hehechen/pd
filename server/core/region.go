@@ -57,6 +57,7 @@ type RegionInfo struct {
 	readKeys          uint64
 	approximateSize   int64
 	approximateKeys   int64
+	maxApproxLag      uint64
 	interval          *pdpb.TimeInterval
 	replicationStatus *replication_modepb.RegionReplicationStatus
 	QueryStats        *pdpb.QueryStats
@@ -151,6 +152,7 @@ func RegionFromHeartbeat(heartbeat *pdpb.RegionHeartbeatRequest, opts ...RegionC
 		interval:          heartbeat.GetInterval(),
 		replicationStatus: heartbeat.GetReplicationStatus(),
 		QueryStats:        heartbeat.GetQueryStats(),
+		maxApproxLag:      heartbeat.GetMaxApproxLag(),
 	}
 
 	for _, opt := range opts {
@@ -474,6 +476,11 @@ func (r *RegionInfo) GetDownPeers() []*pdpb.PeerStats {
 // GetPendingPeers returns the pending peers of the region.
 func (r *RegionInfo) GetPendingPeers() []*metapb.Peer {
 	return r.pendingPeers
+}
+
+// GetMaxApproxLag returns the max approx lag of the region leader and TiFlash learner.
+func (r *RegionInfo) GetMaxApproxLag() uint64 {
+	return r.maxApproxLag
 }
 
 // GetBytesRead returns the read bytes of the region.
@@ -1147,6 +1154,22 @@ func (r *RegionsInfo) ScanRange(startKey, endKey []byte, limit int) []*RegionInf
 		return true
 	})
 	return res
+}
+
+// ScanRange scans regions intersecting [start key, end key), returns at most
+// `limit` regions. limit <= 0 means no limit.
+func (r *RegionsInfo) ScanRangeForMaxApproxLag(startKey, endKey []byte) uint64 {
+	var maxApproxLag uint64
+	r.tree.scanRange(startKey, func(region *RegionInfo) bool {
+		if len(endKey) > 0 && bytes.Compare(region.GetStartKey(), endKey) >= 0 {
+			return false
+		}
+		if region.maxApproxLag > maxApproxLag {
+			maxApproxLag = region.maxApproxLag
+		}
+		return true
+	})
+	return maxApproxLag
 }
 
 // ScanRangeWithIterator scans from the first region containing or behind start key,
